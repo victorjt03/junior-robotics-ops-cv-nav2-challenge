@@ -1,0 +1,19 @@
+# ===== Block A: datasets & training artifacts (DO NOT COMMIT) =====
+block_a_cv/data/raw/
+block_a_cv/data/processed/
+block_a_cv/runs/
+
+# Model artifacts
+*.pt
+*.onnx
+*.engine
+*.tflite
+
+# Python venv/cache
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

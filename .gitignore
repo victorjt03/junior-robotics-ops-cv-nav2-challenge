@@ -17,3 +17,7 @@ __pycache__/
 
 # OS
 .DS_Store
+
+block_a_cv/weights/
+block_a_cv/third_party/yolov9/
+block_a_cv/runs/

@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>cv_yolov9_detector_cpp</name>
+  <version>0.0.1</version>
+  <description>ROS2 C++ detector skeleton (YOLOv9/ONNX optional) with telemetry JSONL and vision_msgs output.</description>
+
+  <maintainer email="victorjt@TODO.local">victorjt</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Core ROS -->
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>vision_msgs</depend>
+
+  <!-- Image pipeline -->
+  <depend>image_transport</depend>
+  <depend>cv_bridge</depend>
+
+  <!-- OpenCV via ROS dependency (rosdep-friendly) -->
+  <depend>opencv4</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

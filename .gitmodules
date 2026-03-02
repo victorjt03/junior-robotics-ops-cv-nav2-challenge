@@ -1,0 +1,3 @@
+[submodule "block_a_cv/third_party/yolov9"]
+	path = block_a_cv/third_party/yolov9
+	url = https://github.com/WongKinYiu/yolov9.git

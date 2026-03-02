@@ -1,23 +1,67 @@
-# ===== Block A: datasets & training artifacts (DO NOT COMMIT) =====
+# ==============================================================================
+# Block A: datasets & training artifacts (DO NOT COMMIT)
+# ==============================================================================
+
+# Raw + processed datasets
 block_a_cv/data/raw/
 block_a_cv/data/processed/
+
+# Training runs / experiment outputs (tensorboard, plots, logs, etc.)
 block_a_cv/runs/
+block_a_cv/**/runs/
 
 # Model artifacts
 *.pt
 *.onnx
 *.engine
 *.tflite
+*.mlmodel
+*.torchscript
+*.jit
 
-# Python venv/cache
+# Logs / telemetry dumps
+*.log
+*.jsonl
+
+# ==============================================================================
+# Third-party code (vendored)
+# ==============================================================================
+block_a_cv/third_party/yolov9/
+
+# ==============================================================================
+# Local weights (pretrained / downloaded checkpoints)
+# ==============================================================================
+block_a_cv/weights/
+
+# ==============================================================================
+# Python env / caches
+# ==============================================================================
 .venv/
+venv/
+.env/
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
 .ipynb_checkpoints/
 
-# OS
-.DS_Store
+# ==============================================================================
+# Build / dist
+# ==============================================================================
+build/
+dist/
+*.egg-info/
 
-block_a_cv/weights/
-block_a_cv/third_party/yolov9/
-block_a_cv/runs/
+# ==============================================================================
+# OS / editor
+# ==============================================================================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

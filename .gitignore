@@ -1,16 +1,13 @@
+cat > .gitignore <<'EOF'
 # ==============================================================================
 # Block A: datasets & training artifacts (DO NOT COMMIT)
 # ==============================================================================
 
-# Raw + processed datasets
 block_a_cv/data/raw/
 block_a_cv/data/processed/
-
-# Training runs / experiment outputs (tensorboard, plots, logs, etc.)
 block_a_cv/runs/
 block_a_cv/**/runs/
 
-# Model artifacts
 *.pt
 *.onnx
 *.engine
@@ -19,7 +16,6 @@ block_a_cv/**/runs/
 *.torchscript
 *.jit
 
-# Logs / telemetry dumps
 *.log
 *.jsonl
 
@@ -41,20 +37,11 @@ venv/
 .env/
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .cache/
 .ipynb_checkpoints/
-
-# ==============================================================================
-# Build / dist
-# ==============================================================================
-build/
-dist/
-*.egg-info/
 
 # ==============================================================================
 # OS / editor
@@ -65,3 +52,4 @@ Thumbs.db
 .vscode/
 *.swp
 *~
+EOF

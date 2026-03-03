@@ -416,3 +416,352 @@ block_a_cv/runs/
 - runs de entrenamiento/validación
 
 - block_a_cv/yolov9_compat_patches.diff
+
+
+# Bloque B - Nodo ROS2 Detecciones
+
+
+Objetivo: entrenar y desplegar un detector de 1 clase (cono) y demostrar prácticas de MLOps/Robotics Ops:
+- overfitting y mitigación
+- data leakage (detección/mitigación)
+- métricas e interpretación
+- telemetría y reproducibilidad (runs/configs/logs)
+- despliegue ROS2 (suscripción cámara, detecciones, telemetría, rosbag)
+
+Este repo contiene:
+- **Block A (Computer Vision)**: preparación de dataset, deduplicación, escenarios de leakage/overfit, entrenamiento reproducible y métricas.
+- **Block B (ROS2 Ops/telemetría/debug)**: nodo ROS2 en C++ modular, inferencia ONNX Runtime, publicación de detecciones + telemetría, guardado JSONL y scripts para grabar/reproducir rosbag.
+
+---
+
+## Estructura del repositorio (alto nivel)
+
+- `block_a_cv/`
+  - `scripts/`: preparación de datasets, dedupe, escenarios de leakage/overfit, entrenamiento, resumen de runs
+  - `data/`: datasets (NO se suben a git)
+  - `runs/`: salidas de entrenamiento (NO se suben a git)
+  - `third_party/yolov9/`: YOLOv9 (submódulo/copia vendorizada)
+  - `yolov9_compat_patches.diff`: parches mínimos para compatibilidad con PyTorch moderno
+
+- `block_b_ros2_ws/`
+  - `src/cv_yolov9_detector_cpp/`: paquete ROS2 C++ (nodo + librerías) y scripts de rosbag
+  - `build/ install/ log/`: artefactos de compilación (NO se suben a git)
+  - `models/`: modelos ONNX (recomendado NO subir a git; se generan desde Block A)
+
+---
+
+## Requisitos
+
+### Sistema
+- Ubuntu 24.04 (noble) (o equivalente)
+- ROS2 Jazzy
+- CMake / colcon / rosdep
+
+### Dependencias ROS2 (Bloque B)
+Instalar dependencias típicas:
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  ros-$ROS_DISTRO-vision-msgs \
+  ros-$ROS_DISTRO-cv-bridge \
+  ros-$ROS_DISTRO-image-transport \
+  nlohmann-json3-dev
+```
+
+ONNX Runtime:
+
+- Si libonnxruntime-dev no está disponible en apt para tu distro, se instala desde release binario (ver sección “ONNX Runtime (instalación real)”).
+
+B.1 Qué entrega este bloque
+
+Paquete ROS2 en C++ que:
+
+- Suscribe a un topic de imagen (sensor_msgs/msg/Image)
+
+- Corre inferencia con ONNX Runtime (modelo YOLOv9 exportado a ONNX)
+
+Publica:
+
+- vision_msgs/Detection2DArray en /detections (configurable)
+
+- Telemetría en /telemetry/cv como std_msgs/String (JSON serializado)
+
+- Guarda telemetría en disco como JSONL con timestamps, latencia, FPS y conteo de detecciones
+
+- Incluye scripts para grabar y reproducir un rosbag (mínimo cámara + detecciones)
+
+## B.2 Workspace y build
+```bash
+cd ~/junior-robotics-ops-cv-nav2-challenge/block_b_ros2_ws
+source /opt/ros/$ROS_DISTRO/setup.bash
+
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install
+
+source install/setup.bash
+
+Nota: evita mezclar el venv de Python del Bloque A con ROS2 (puede romper ros2 tools). Si tienes dudas:
+
+deactivate 2>/dev/null || true
+unset PYTHONPATH
+unset PYTHONHOME
+source /opt/ros/$ROS_DISTRO/setup.bash
+```
+
+## B.3 ONNX Runtime (instalación real)
+
+Si no existe libonnxruntime-dev en apt para tu distro, se usa release binario.
+
+Ejemplo (ajustar versión si fuera necesario):
+
+```bash
+cd /tmp
+wget -O onnxruntime.tgz \
+  https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxruntime-linux-x64-1.24.2.tgz
+tar -xzf onnxruntime.tgz
+
+sudo rm -rf /opt/onnxruntime-1.24.2
+sudo mv onnxruntime-linux-x64-1.24.2 /opt/onnxruntime-1.24.2
+
+# (opcional) mantener /opt/onnxruntime apuntando a la versión actual
+sudo ln -sfn /opt/onnxruntime-1.24.2 /opt/onnxruntime
+
+# Registrar librerías en el linker
+echo "/opt/onnxruntime/lib" | sudo tee /etc/ld.so.conf.d/onnxruntime.conf >/dev/null
+sudo ldconfig
+
+# pkg-config (para que CMake lo encuentre)
+sudo mkdir -p /usr/local/lib/pkgconfig
+sudo tee /usr/local/lib/pkgconfig/onnxruntime.pc >/dev/null <<'EOF'
+prefix=/opt/onnxruntime
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: onnxruntime
+Description: ONNX Runtime
+Version: 1.24.2
+Libs: -L${libdir} -lonnxruntime
+Cflags: -I${includedir}
+EOF
+
+pkg-config --modversion onnxruntime
+pkg-config --cflags --libs onnxruntime
+```
+
+## B.4 Export de modelo a ONNX (desde Block A)
+
+Se exporta desde un best.pt entrenado (ejemplo: baseline DEDUP).
+
+```bash
+cd ~/junior-robotics-ops-cv-nav2-challenge
+source .venv/bin/activate
+
+pip install pandas onnx onnxsim onnxscript
+
+export YOLO_DIR="block_a_cv/third_party/yolov9"
+export W="block_a_cv/runs/baseline_yolov9s_seed42_img512_b4_e60_DEDUP/weights/best.pt"
+export IMG=512
+
+python "$YOLO_DIR/export.py" \
+  --weights "$W" \
+  --imgsz $IMG \
+  --batch 1 \
+  --device cpu \
+  --include onnx \
+  --opset 18 \
+  --simplify
+```
+
+Resultado típico:
+
+block_a_cv/runs/.../weights/best.onnx
+
+Copiarlo al Bloque B:
+
+```bash
+mkdir -p block_b_ros2_ws/models
+cp -v block_a_cv/runs/baseline_yolov9s_seed42_img512_b4_e60_DEDUP/weights/best.onnx \
+  block_b_ros2_ws/models/yolov9_cone.onnx
+```
+
+## B.5 Parámetros del nodo
+
+Parámetros principales (ejemplo):
+
+- image_topic (default: /camera/image_raw o el que uses)
+
+- detections_topic (default: /detections)
+
+- telemetry_topic (default: /telemetry/cv)
+
+- telemetry_path (default recomendado: ~/.ros/cv_telemetry.jsonl)
+
+- model_path (ruta al ONNX)
+
+- imgsz (debe coincidir con el export, ej: 512)
+
+- conf_thres, iou_thres, max_det
+
+- class_name (ej: cone)
+
+## B.6 Pruebas reales (webcam) — exactamente qué correr en cada terminal
+
+### Terminal 1: cámara (webcam)
+
+Puedes usar v4l2_camera (recomendado en Jazzy). Si no lo tienes:
+```bash
+sudo apt-get install -y ros-$ROS_DISTRO-v4l2-camera
+```
+
+Arranque ejemplo:
+
+```bash
+source /opt/ros/$ROS_DISTRO/setup.bash
+ros2 run v4l2_camera v4l2_camera_node --ros-args \
+  -p image_size:="[640,480]" \
+  -p pixel_format:="RGB3" \
+  -p output_encoding:="rgb8" \
+  -r image_raw:=/image_raw
+```
+
+Verifica que publica:
+
+```bash
+ros2 topic info /image_raw
+Terminal 2: nodo detector (con ONNX)
+cd ~/junior-robotics-ops-cv-nav2-challenge/block_b_ros2_ws
+deactivate 2>/dev/null || true
+unset PYTHONPATH
+unset PYTHONHOME
+
+source /opt/ros/$ROS_DISTRO/setup.bash
+source install/setup.bash
+
+rm -f /tmp/cv_telemetry.jsonl
+
+ros2 run cv_yolov9_detector_cpp yolov9_detector_node --ros-args \
+  -p image_topic:=/image_raw \
+  -p telemetry_path:=/tmp/cv_telemetry.jsonl \
+  -p model_path:="$HOME/junior-robotics-ops-cv-nav2-challenge/block_b_ros2_ws/models/yolov9_cone.onnx" \
+  -p imgsz:=512 \
+  -p conf_thres:=0.25 \
+  -p iou_thres:=0.7 \
+  --log-level info
+```
+
+### Terminal 3: verificación (topics + telemetría + detecciones + JSONL)
+
+```bash
+source /opt/ros/$ROS_DISTRO/setup.bash
+
+# Rates (Ctrl+C para parar cada uno)
+ros2 topic hz /image_raw
+ros2 topic hz /telemetry/cv
+ros2 topic hz /detections
+
+# 1 muestra
+ros2 topic echo /telemetry/cv --once
+ros2 topic echo /detections --once
+
+# JSONL crece y es válido
+ls -la /tmp/cv_telemetry.jsonl
+tail -n 3 /tmp/cv_telemetry.jsonl
+
+python3 - <<'PY'
+import json
+p="/tmp/cv_telemetry.jsonl"
+n=0
+for line in open(p,'r',encoding='utf-8'):
+    json.loads(line); n+=1
+print("OK JSONL. lines:", n)
+PY
+```
+
+Interpretación mínima:
+
+/image_raw debería ir ~30 Hz (webcam)
+
+/telemetry/cv y /detections bajarán según latencia de inferencia (ej: ~1–3 Hz si CPU y modelo pesado)
+
+detections debe contener bounding boxes cuando el cono aparezca en cámara
+
+/tmp/cv_telemetry.jsonl debe crecer y cada línea debe ser JSON válido
+
+### B.7 Rosbag: grabar y reproducir (mínimo cámara + detecciones)
+
+El paquete incluye scripts:
+
+Grabar
+
+En una terminal (con cámara + detector ya corriendo):
+
+```bash
+cd ~/junior-robotics-ops-cv-nav2-challenge/block_b_ros2_ws
+source /opt/ros/$ROS_DISTRO/setup.bash
+source install/setup.bash
+
+# Graba image + detections + telemetry
+./install/cv_yolov9_detector_cpp/lib/cv_yolov9_detector_cpp/record_bag.sh \
+  ~/bags/cv_bag_webcam \
+  /image_raw /detections /telemetry/cv
+Reproducir
+cd ~/junior-robotics-ops-cv-nav2-challenge/block_b_ros2_ws
+source /opt/ros/$ROS_DISTRO/setup.bash
+source install/setup.bash
+
+./install/cv_yolov9_detector_cpp/lib/cv_yolov9_detector_cpp/play_bag.sh \
+  ~/bags/cv_bag_webcam \
+  1.0
+```
+
+Verificación durante el play (otra terminal):
+
+```bash
+source /opt/ros/$ROS_DISTRO/setup.bash
+ros2 topic hz /image_raw
+ros2 topic hz /detections
+ros2 topic echo /detections --once
+```
+
+### B.8 Telemetría (JSON) — campos mínimos
+
+Cada mensaje de /telemetry/cv y cada línea en JSONL incluye:
+
+- stamp_ns: timestamp monotónico
+
+- image_topic: topic consumido
+
+- img_w, img_h: tamaño del frame
+
+- model_path, device, imgsz, conf_thres, iou_thres, max_det
+
+- latency_ms: latencia end-to-end por frame
+
+- fps: fps estimado (1/delta tiempo entre callbacks)
+
+- num_detections: conteo detecciones
+
+- mean_conf: confianza media del frame
+
+### Notas de entrega / reproducibilidad
+
+No se suben a git:
+
+- datasets (block_a_cv/data/*)
+
+- runs de entrenamiento (block_a_cv/runs/*)
+
+- artefactos de build ROS2 (block_b_ros2_ws/build install log)
+
+- rosbag (bags/*)
+
+- telemetría generada (*.jsonl)
+
+- modelos binarios (*.pt, *.onnx) (recomendado)
+
+### Para reproducir:
+
+- Block A: scripts + runs configurables, seeds en opt.yaml
+
+- Block B: colcon build + parámetros del nodo + scripts rosbag

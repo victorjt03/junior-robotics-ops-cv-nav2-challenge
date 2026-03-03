@@ -1,4 +1,3 @@
-cat > .gitignore <<'EOF'
 # ==============================================================================
 # Block A: datasets & training artifacts (DO NOT COMMIT)
 # ==============================================================================
@@ -52,4 +51,18 @@ Thumbs.db
 .vscode/
 *.swp
 *~
-EOF
+
+# ===== Block B: ROS2 workspace artifacts =====
+block_b_ros2_ws/build/
+block_b_ros2_ws/install/
+block_b_ros2_ws/log/
+
+# Telemetry/runtime outputs
+block_b_ros2_ws/telemetry/
+*.jsonl
+
+# Optional large model artifacts (keep out of git)
+block_b_ros2_ws/models/
+*.onnx
+*.engine
+*.tflite

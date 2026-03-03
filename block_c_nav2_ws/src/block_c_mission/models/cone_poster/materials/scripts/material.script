@@ -1,0 +1,13 @@
+material cone_poster/material
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture cone.png
+      }
+    }
+  }
+}

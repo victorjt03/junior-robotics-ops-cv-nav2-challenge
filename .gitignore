@@ -66,3 +66,12 @@ block_b_ros2_ws/models/
 *.onnx
 *.engine
 *.tflite
+
+# ===== Block C: ROS2 workspace artifacts (DO NOT COMMIT) =====
+block_c_nav2_ws/build/
+block_c_nav2_ws/install/
+block_c_nav2_ws/log/
+
+# Gazebo caches (optional)
+~/.gz/
+~/.ignition/

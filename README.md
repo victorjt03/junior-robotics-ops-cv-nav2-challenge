@@ -472,7 +472,7 @@ ONNX Runtime:
 
 - Si libonnxruntime-dev no está disponible en apt para tu distro, se instala desde release binario (ver sección “ONNX Runtime (instalación real)”).
 
-B.1 Qué entrega este bloque
+## B.1 Qué entrega este bloque
 
 Paquete ROS2 en C++ que:
 
@@ -765,3 +765,130 @@ No se suben a git:
 - Block A: scripts + runs configurables, seeds en opt.yaml
 
 - Block B: colcon build + parámetros del nodo + scripts rosbag
+
+
+# Block C — Simulación +  evento por visión
+
+Este bloque demuestra una **integración mínima** de simulación y navegación con un evento disparado por visión:
+- Se lanza **TurtleBot3** en **Gazebo Sim (gz sim)** con un **poster** en el mundo (imagen de un cono).
+- Se publica cámara a ROS 2 en /camera/image_raw.
+- El detector del Bloque B consume esa imagen y publica detecciones en /detections.
+- Un nodo de **monitorización de eventos** (este bloque) escucha /detections y **registra un evento** cuando detecta cone por encima de un umbral.
+Qué se entrega en Block C (sin extra opcional)
+- Mundo de Gazebo Sim con TB3 y el modelo cone_poster.
+- Launch para levantar simulación (TB3 + bridges).
+- Nodo event_monitor_node (C++) que:
+- suscribe vision_msgs/Detection2DArray (por defecto /detections)
+- filtra por class_id/score y emite logs de evento
+
+
+Requisitos
+- ROS 2 Jazzy instalado.
+- Gazebo Sim (gz sim) y TurtleBot3 Gazebo para Jazzy.
+- Bloque B compilado y con ONNX exportado (modelo yolov9_cone.onnx).
+- Dependencias ROS2 para Block B: vision_msgs, cv_bridge, image_transport.
+Variables de entorno:
+export TURTLEBOT3_MODEL=waffle_pi
+Estructura relevante
+Dentro de block_c_nav2_ws/src/block_c_mission/:
+- launch/tb3_cone_world.launch.py
+- worlds/tb3_cone_poster.world
+- models/cone_poster/ (incluye model.sdf, model.config, textura cone.png)
+- params/tb3_bridge_with_camera.yaml
+- src/event_monitor_node.cpp
+Cómo ejecutar (3 terminales)
+### Terminal 1 — Simulación (TB3 + world + bridges)
+```bash
+cd ~/junior-robotics-ops-cv-nav2-challenge/block_c_nav2_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+export TURTLEBOT3_MODEL=waffle_pi
+ros2 launch block_c_mission tb3_cone_world.launch.py use_sim_time:=true
+```
+Comprobación rápida (en otra terminal):
+```bash
+source /opt/ros/jazzy/setup.bash
+# ROS: cámara debe existir y tener publisher
+ros2 topic list -t | grep -E "camera/image_raw|sensor_msgs/msg/Image"
+ros2 topic info /camera/image_raw
+# GZ: debe existir publisher de imagen en /camera/image_raw
+gz topic -l | grep -i image_raw
+gz topic -i -t /camera/image_raw
+### Terminal 2 — Detector (Bloque B) sobre la cámara simulada
+```
+Asumiendo que ya tienes el ONNX en:
+~/junior-robotics-ops-cv-nav2-challenge/block_b_ros2_ws/models/yolov9_cone.onnx
+```bash
+cd ~/junior-robotics-ops-cv-nav2-challenge/block_b_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+rm -f /tmp/cv_telemetry.jsonl
+ros2 run cv_yolov9_detector_cpp yolov9_detector_node --ros-args \
+ -p use_sim_time:=true \
+ -p image_topic:=/camera/image_raw \
+ -p model_path:="$HOME/junior-robotics-ops-cv-nav2-challenge/block_b_ros2_ws/models/yolov9_cone.onnx" \
+ -p telemetry_path:=/tmp/cv_telemetry.jsonl \
+ -p conf_thres:=0.25 \
+ -p iou_thres:=0.7 \
+ --log-level info
+ ```
+
+Comprobaciones:
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 topic info /detections
+ros2 topic echo /detections --once
+ros2 topic echo /telemetry/cv --once
+tail -n 3 /tmp/cv_telemetry.jsonl
+### Terminal 3 — Event monitor (Block C)
+cd ~/junior-robotics-ops-cv-nav2-challenge/block_c_nav2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run block_c_mission event_monitor_node --ros-args \
+ -p use_sim_time:=true \
+ -p detections_topic:=/detections \
+ -p conf_thres:=0.6 \
+ -p pause_seconds:=3.0 \
+ --log-level info
+ ```
+
+Salida esperada:
+
+- Logs periódicos del tipo:
+[WARN] [cv_event_monitor]: CONE EVENT: detected score=0.850 (threshold=0.60)
+Validación de que “funciona de verdad”
+Checklist mínimo del enunciado (Block C):
+1. **Mundo y robot**: en Gazebo debe verse el TB3 y el poster cone_poster.
+2. **Cámara**:
+- ros2 topic info /camera/image_raw -> Publisher count: 1 (o mayor)
+- ros2 topic hz /camera/image_raw -> Hz > 0
+3. **Inferencia**:
+- ros2 topic info /detections -> publisher = 1 (el detector)
+- ros2 topic echo /detections --once devuelve una Detection2DArray
+4. **Evento por visión**:
+- el event_monitor_node registra CONE EVENT cuando el poster entra en el FOV.
+5. **Telemetría (Bloque B, integrado)**:
+- /tmp/cv_telemetry.jsonl crece y contiene JSONL válido.
+Parámetros relevantes
+### tb3_cone_world.launch.py
+- use_sim_time (default true)
+- x_pose, y_pose, z_pose, yaw (spawn pose del robot)
+### event_monitor_node
+- detections_topic (default /detections)
+- conf_thres (default 0.6)
+- pause_seconds (default 3.0)
+### yolov9_detector_node (Bloque B)
+- image_topic (usar /camera/image_raw)
+- model_path (ruta absoluta al .onnx)
+- conf_thres, iou_thres
+- telemetry_path
+Notas operativas (troubleshooting)
+- Si /camera/image_raw existe pero no hay frames: comprobar en GZ si hay **publisher** real:
+```bash 
+gz topic -i -t /camera/image_raw debe listar publishers.
+```
+- revisar que el TB3 elegido sea waffle_pi (incluye cámara en model.sdf).
+- Si se abre un mundo equivocado (p.ej. empty_world.world):asegurar que el launch está pasando el world_file correcto al arranque de gz sim.
+- Si el poster aparece negro:
+usar material con ambient/diffuse además de PBR, y double_sided=true.
